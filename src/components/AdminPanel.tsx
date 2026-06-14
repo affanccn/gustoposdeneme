@@ -367,6 +367,10 @@ export default function AdminPanel({ onCloseAction, user }: AdminPanelProps) {
     setActionError('');
     try {
       if (activeTab === 'REPORTS') {
+        const wdRes = await fetch('/api/admin/workday');
+        const wdData = await wdRes.json();
+        setWorkDays(wdData);
+
         let url = '/api/admin/reports';
         const params = new URLSearchParams();
         if (viewingWorkDay) {
@@ -1157,27 +1161,6 @@ export default function AdminPanel({ onCloseAction, user }: AdminPanelProps) {
       ) : activeTab === 'REPORTS' && reportsData ? (
         <div className="space-y-6 animate-fade-in">
 
-          {/* Geçmiş Rapor İnceleme Uyarısı */}
-          {viewingWorkDay && (
-            <div className="bg-amber-950/40 border border-amber-500/30 p-4 rounded-2xl flex items-center justify-between shadow-md">
-              <div className="flex items-center space-x-3">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
-                <span className="text-xs text-zinc-200">
-                  Şu anda <strong>{new Date(viewingWorkDay.startTime).toLocaleDateString('tr-TR')}</strong> tarihli geçmiş günün Z raporunu inceliyorsunuz.
-                </span>
-              </div>
-              <button
-                onClick={() => {
-                  setViewingWorkDay(null);
-                  setDateRange({ startDate: '', endDate: '' });
-                }}
-                className="bg-amber-650 hover:bg-amber-500 text-white text-xs px-3.5 py-1.5 rounded-xl font-bold transition shadow-md"
-              >
-                Aktif Güne Geri Dön
-              </button>
-            </div>
-          )}
-
           {/* Rapor Alt Sekme Seçiciler */}
           <div className="flex bg-zinc-950/40 border border-zinc-850 p-1 rounded-xl w-fit space-x-1">
             <button
@@ -1212,28 +1195,59 @@ export default function AdminPanel({ onCloseAction, user }: AdminPanelProps) {
 
           {reportsSubTab === 'OVERVIEW' && (
             <>
-              {/* Tarih Filtresi */}
-              <div className="glass-card p-4 rounded-2xl shadow-md flex items-end space-x-4">
+              {/* Gün ve Tarih Filtresi */}
+              <div className="glass-card p-4 rounded-2xl shadow-md flex flex-wrap items-end gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1">Gün İşlemi (Vardiya) Seçin</label>
+                  <select
+                    value={viewingWorkDay?.id || ''}
+                    onChange={(e) => {
+                      if (!e.target.value) {
+                         setViewingWorkDay(null);
+                      } else {
+                         const wd = workDays.find(w => w.id === e.target.value);
+                         if (wd) setViewingWorkDay(wd);
+                      }
+                    }}
+                    className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-amber-500 min-w-[250px]"
+                  >
+                    <option value="">-- Genel Toplam / Tarihe Göre --</option>
+                    {workDays.map(wd => (
+                      <option key={wd.id} value={wd.id}>
+                        {new Date(wd.startTime).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })} | {new Date(wd.startTime).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })} 
+                        {wd.endTime ? ` - ${new Date(wd.endTime).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}` : ' (Aktif Gün)'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2 px-2 text-zinc-500 font-bold mb-2">veya</div>
+
                 <div>
                   <label className="block text-xs font-semibold text-zinc-400 mb-1">Başlangıç Tarihi</label>
                   <input
                     type="date"
+                    disabled={!!viewingWorkDay}
                     value={dateRange.startDate}
                     onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
-                    className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-amber-500"
+                    className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-zinc-400 mb-1">Bitiş Tarihi</label>
                   <input
                     type="date"
+                    disabled={!!viewingWorkDay}
                     value={dateRange.endDate}
                     onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
-                    className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-amber-500"
+                    className="bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
                   />
                 </div>
                 <button
-                  onClick={() => setDateRange({ startDate: '', endDate: '' })}
+                  onClick={() => {
+                    setDateRange({ startDate: '', endDate: '' });
+                    setViewingWorkDay(null);
+                  }}
                   className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs px-4 py-2.5 rounded-xl font-medium transition h-[38px]"
                 >
                   Filtreyi Temizle
