@@ -67,7 +67,7 @@ export async function GET(request: Request) {
       CARI: 0,
     };
 
-    paidOrders.forEach((order) => {
+    allOrders.forEach((order) => {
       totalRevenue += order.paidAmount;
       totalDiscounts += order.discountAmount;
 
@@ -99,23 +99,25 @@ export async function GET(request: Request) {
     // Ürünleri kategori isimleri için haritaya al
     const productCategoryMap = new Map(products.map((p) => [p.id, p.category.name]));
 
-    paidOrders.forEach((order) => {
+    allOrders.forEach((order) => {
       order.items.forEach((item) => {
-        // Ürün satışı
-        const categoryName = productCategoryMap.get(item.productId) || 'Diğer';
-        const currentProduct = productSalesMap.get(item.productId) || {
-          name: item.productName,
-          quantity: 0,
-          total: 0,
-          categoryName
-        };
-        currentProduct.quantity += item.quantity;
-        currentProduct.total += item.unitPrice * item.quantity;
-        productSalesMap.set(item.productId, currentProduct);
+        if (item.status === 'PAID') {
+          // Ürün satışı
+          const categoryName = productCategoryMap.get(item.productId) || 'Diğer';
+          const currentProduct = productSalesMap.get(item.productId) || {
+            name: item.productName,
+            quantity: 0,
+            total: 0,
+            categoryName
+          };
+          currentProduct.quantity += item.quantity;
+          currentProduct.total += item.unitPrice * item.quantity;
+          productSalesMap.set(item.productId, currentProduct);
 
-        // Kategori satışı
-        const currentCategoryTotal = categorySalesMap.get(categoryName) || 0;
-        categorySalesMap.set(categoryName, currentCategoryTotal + item.unitPrice * item.quantity);
+          // Kategori satışı
+          const currentCategoryTotal = categorySalesMap.get(categoryName) || 0;
+          categorySalesMap.set(categoryName, currentCategoryTotal + item.unitPrice * item.quantity);
+        }
       });
     });
 
@@ -140,9 +142,11 @@ export async function GET(request: Request) {
       total: 0,
     }));
 
-    paidOrders.forEach((order) => {
-      const hour = new Date(order.createdAt).getHours();
-      hourlySalesArray[hour].total += order.paidAmount;
+    allOrders.forEach((order) => {
+      if (order.paidAmount > 0) {
+        const hour = new Date(order.createdAt).getHours();
+        hourlySalesArray[hour].total += order.paidAmount;
+      }
     });
 
     // Yuvarlamaları yap
@@ -234,8 +238,10 @@ export async function GET(request: Request) {
     // First count unique orders per waiter
     const waiterOrders = new Map<string, Set<string>>();
     
-    paidOrders.forEach((order) => {
+    allOrders.forEach((order) => {
       order.items.forEach(item => {
+        if (item.status !== 'PAID') return;
+
         const userId = item.waiterUserId;
         const user = item.waiterUser;
         if (!userId || !user) return;
@@ -283,7 +289,9 @@ export async function GET(request: Request) {
     // 8. Kapatılan Adisyon Günlüğü (Z Raporu listesi) - allTables paralelde çekildi
     const tableMap = new Map(allTables.map((t) => [t.id, t.name]));
 
-    const adisyonHistory = paidOrders.map((o) => ({
+    const adisyonHistory = allOrders
+      .filter((o) => o.paidAmount > 0 || o.status === 'PAID')
+      .map((o) => ({
       id: o.id,
       tableName: tableMap.get(o.tableId) || 'Bilinmiyor',
       createdAt: o.createdAt,
@@ -303,7 +311,8 @@ export async function GET(request: Request) {
 
     // 9. En Çok Tercih Edilen Masalar (Top 5 Tables)
     const tablePerformanceMap = new Map<string, { name: string; orderCount: number; totalRevenue: number }>();
-    paidOrders.forEach((order) => {
+    allOrders.forEach((order) => {
+      if (order.paidAmount === 0 && order.status !== 'PAID') return;
       const tableName = tableMap.get(order.tableId) || 'Bilinmiyor';
       const stats = tablePerformanceMap.get(order.tableId) || { name: tableName, orderCount: 0, totalRevenue: 0 };
       stats.orderCount += 1;
@@ -355,8 +364,9 @@ export async function GET(request: Request) {
 
     // Satılan Malın Maliyeti (COGS) Hesabı
     let totalCogs = 0;
-    paidOrders.forEach((order) => {
+    allOrders.forEach((order) => {
       order.items.forEach((item) => {
+        if (item.status !== 'PAID') return;
         const unitCost = productCostMap.get(item.productId) || 0;
         totalCogs += unitCost * item.quantity;
       });
@@ -368,7 +378,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       summary: {
         totalRevenue: Math.round(totalRevenue * 100) / 100,
-        totalOrders: paidOrders.length,
+        totalOrders: allOrders.filter(o => o.paidAmount > 0 || o.status === 'PAID').length,
         openRevenue: Math.round(openRevenue * 100) / 100,
         openOrdersCount: openOrders.length,
         totalDiscounts: Math.round(totalDiscounts * 100) / 100,
