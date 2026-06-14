@@ -554,7 +554,7 @@ export default function POSInterface({
                 <div
                   key={product.id}
                   onClick={() => !isOutOfStock && handleProductClick(product)}
-                  className={`active-press glass-card hover:bg-zinc-800/70 p-2 md:p-3 rounded-xl flex flex-col items-center justify-center text-center aspect-square border transition cursor-pointer select-none relative overflow-hidden group ${isOutOfStock ? 'opacity-40 cursor-not-allowed' : 'border-zinc-800/60 hover:border-zinc-700'
+                  className={`active-press glass-card hover:bg-zinc-800/70 p-2 md:p-3 rounded-xl flex flex-col items-center justify-center text-center min-h-[130px] sm:min-h-[150px] border transition cursor-pointer select-none relative overflow-hidden group ${isOutOfStock ? 'opacity-40 cursor-not-allowed' : 'border-zinc-800/60 hover:border-zinc-700'
                     }`}
                 >
                   {/* Subtle Background Image Overlay */}
