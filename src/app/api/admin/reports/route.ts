@@ -16,7 +16,7 @@ export async function GET(request: Request) {
       dateFilter.lte = new Date(endDateParam);
     }
 
-    const orderWhere: any = { status: { in: ['PAID', 'OPEN'] } };
+    const orderWhere: any = { status: { in: ['PAID', 'ACTIVE'] } };
     if (workDayIdParam) {
       orderWhere.workDayId = workDayIdParam;
     } else if (startDateParam || endDateParam) {
@@ -54,7 +54,7 @@ export async function GET(request: Request) {
     ]);
 
     const paidOrders = allOrders.filter(o => o.status === 'PAID');
-    const openOrders = allOrders.filter(o => o.status === 'OPEN');
+    const openOrders = allOrders.filter(o => o.status === 'ACTIVE');
 
     // 2. Özet İstatistikler
     let totalRevenue = 0;

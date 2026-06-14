@@ -12,7 +12,7 @@ export async function GET(request: Request) {
         include: { 
           startedByUser: { select: { name: true } },
           orders: {
-            where: { status: 'PAID' },
+            where: { status: { in: ['PAID', 'ACTIVE'] } },
             select: { paidAmount: true }
           }
         }
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
         startedByUser: { select: { name: true } },
         _count: { select: { orders: true } },
         orders: {
-          where: { status: 'PAID' },
+          where: { status: { in: ['PAID', 'ACTIVE'] } },
           select: { paidAmount: true }
         }
       },
