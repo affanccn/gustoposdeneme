@@ -1911,7 +1911,7 @@ export default function AdminPanel({ onCloseAction, user }: AdminPanelProps) {
                       {(() => {
                         const getMacroCategory = (catName?: string) => {
                           if (!catName) return 'DİĞER';
-                          const lower = catName.toLowerCase();
+                          const lower = catName.toLocaleLowerCase('tr-TR');
                           if (lower.includes('nargile')) return 'NARGİLE';
                           if (lower.includes('kahvaltı')) return 'KAHVALTI';
                           if (lower.includes('tatlı') || lower.includes('pasta') || lower.includes('waffle')) return 'TATLI';
