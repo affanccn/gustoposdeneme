@@ -16,7 +16,7 @@ export async function GET(request: Request) {
       dateFilter.lte = new Date(endDateParam);
     }
 
-    const orderWhere: any = { status: 'PAID' };
+    const orderWhere: any = { status: { in: ['PAID', 'OPEN'] } };
     if (workDayIdParam) {
       orderWhere.workDayId = workDayIdParam;
     } else if (startDateParam || endDateParam) {
@@ -34,8 +34,8 @@ export async function GET(request: Request) {
       }
     }
 
-    // 1. Kapatılmış (ödenmiş) tüm siparişleri, kategorileri, ürünleri ve masaları paralel olarak çek
-    const [paidOrders, categories, products, allTables] = await Promise.all([
+    // 1. Kapatılmış ve açık tüm siparişleri, kategorileri, ürünleri ve masaları paralel olarak çek
+    const [allOrders, categories, products, allTables] = await Promise.all([
       db.order.findMany({
         where: orderWhere,
         include: {
@@ -53,9 +53,13 @@ export async function GET(request: Request) {
       db.table.findMany({ select: { id: true, name: true } }),
     ]);
 
+    const paidOrders = allOrders.filter(o => o.status === 'PAID');
+    const openOrders = allOrders.filter(o => o.status === 'OPEN');
+
     // 2. Özet İstatistikler
     let totalRevenue = 0;
     let totalDiscounts = 0;
+    let openRevenue = 0;
     const paymentMethods = {
       CASH: 0,
       CREDIT_CARD: 0,
@@ -75,8 +79,18 @@ export async function GET(request: Request) {
       });
     });
 
+    openOrders.forEach((order) => {
+      order.items.forEach((item) => {
+        if (item.status === 'ACTIVE') {
+          const modifiers = item.selectedModifiers ? JSON.parse(item.selectedModifiers) : [];
+          const modifiersTotal = modifiers.reduce((sum: number, m: any) => sum + m.price, 0);
+          openRevenue += (item.unitPrice + modifiersTotal) * item.quantity;
+        }
+      });
+    });
+
     // 3. Ürün Satış Sayıları & Kategori Ciro Dağılımı
-    const productSalesMap = new Map<string, { name: string; quantity: number; total: number }>();
+    const productSalesMap = new Map<string, { name: string; quantity: number; total: number; categoryName: string }>();
     const categorySalesMap = new Map<string, number>();
 
     // Bütün kategorileri haritayı sıfırla dolduralım
@@ -88,17 +102,18 @@ export async function GET(request: Request) {
     paidOrders.forEach((order) => {
       order.items.forEach((item) => {
         // Ürün satışı
+        const categoryName = productCategoryMap.get(item.productId) || 'Diğer';
         const currentProduct = productSalesMap.get(item.productId) || {
           name: item.productName,
           quantity: 0,
           total: 0,
+          categoryName
         };
         currentProduct.quantity += item.quantity;
         currentProduct.total += item.unitPrice * item.quantity;
         productSalesMap.set(item.productId, currentProduct);
 
         // Kategori satışı
-        const categoryName = productCategoryMap.get(item.productId) || 'Diğer';
         const currentCategoryTotal = categorySalesMap.get(categoryName) || 0;
         categorySalesMap.set(categoryName, currentCategoryTotal + item.unitPrice * item.quantity);
       });
@@ -354,6 +369,8 @@ export async function GET(request: Request) {
       summary: {
         totalRevenue: Math.round(totalRevenue * 100) / 100,
         totalOrders: paidOrders.length,
+        openRevenue: Math.round(openRevenue * 100) / 100,
+        openOrdersCount: openOrders.length,
         totalDiscounts: Math.round(totalDiscounts * 100) / 100,
         totalCogs,
         netProfit: Math.round((totalRevenue - totalCogs) * 100) / 100

@@ -91,6 +91,8 @@ interface AdminPanelProps {
 interface ReportSummary {
   totalRevenue: number;
   totalOrders: number;
+  openRevenue?: number;
+  openOrdersCount?: number;
   totalDiscounts: number;
 }
 
@@ -105,6 +107,7 @@ interface TopProduct {
   name: string;
   quantity: number;
   total: number;
+  categoryName?: string;
 }
 
 interface TopTable {
@@ -197,6 +200,7 @@ export default function AdminPanel({ onCloseAction, user }: AdminPanelProps) {
   // Grafik İnteraktif State'leri
   const [hoveredHourIndex, setHoveredHourIndex] = useState<number | null>(null);
   const [hoveredCategoryIndex, setHoveredCategoryIndex] = useState<number | null>(null);
+  const [productSalesMacroFilter, setProductSalesMacroFilter] = useState<string>('TÜMÜ');
 
   // Gün İşlemleri State'leri
   const [workDays, setWorkDays] = useState<any[]>([]);
@@ -1237,37 +1241,53 @@ export default function AdminPanel({ onCloseAction, user }: AdminPanelProps) {
               </div>
 
               {/* Z Raporu Özeti */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="glass-card p-4 rounded-2xl relative overflow-hidden shadow-lg border-l-4 border-l-emerald-500">
                   <div className="absolute right-3 top-3 text-emerald-500 bg-emerald-500/10 p-2 rounded-xl">
                     <TrendingUp className="w-5 h-5" />
                   </div>
-                  <p className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Net Günlük Ciro</p>
+                  <p className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Kapatılan Ciro (Ödenen)</p>
                   <h2 className="text-xl font-heading font-black text-white mt-2">
                     {reportsData.summary.totalRevenue.toFixed(2)} TL
                   </h2>
+                  <p className="text-xs text-zinc-500 mt-1">{reportsData.summary.totalOrders} adisyon kapatıldı</p>
                 </div>
 
                 <div className="glass-card p-4 rounded-2xl relative overflow-hidden shadow-lg border-l-4 border-l-amber-500">
                   <div className="absolute right-3 top-3 text-amber-500 bg-amber-500/10 p-2 rounded-xl">
-                    <ShoppingBag className="w-5 h-5" />
+                    <Activity className="w-5 h-5" />
                   </div>
-                  <p className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Kapatılan Adisyon</p>
-                  <h2 className="text-xl font-heading font-black text-white mt-2">
-                    {reportsData.summary.totalOrders} adet
+                  <p className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Açık Masalar (Bekleyen)</p>
+                  <h2 className="text-xl font-heading font-black text-amber-400 mt-2">
+                    {(reportsData.summary.openRevenue || 0).toFixed(2)} TL
                   </h2>
+                  <p className="text-xs text-zinc-500 mt-1">{reportsData.summary.openOrdersCount || 0} açık masa</p>
                 </div>
 
-                <div className="glass-card p-4 rounded-2xl relative overflow-hidden shadow-lg border-l-4 border-l-amber-500">
-                  <div className="absolute right-3 top-3 text-amber-500 bg-amber-500/10 p-2 rounded-xl">
+                <div className="glass-card p-4 rounded-2xl relative overflow-hidden shadow-lg border-l-4 border-l-cyan-500">
+                  <div className="absolute right-3 top-3 text-cyan-500 bg-cyan-500/10 p-2 rounded-xl">
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <p className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Genel Ciro (Tüm Satışlar)</p>
+                  <h2 className="text-xl font-heading font-black text-cyan-400 mt-2">
+                    {(reportsData.summary.totalRevenue + (reportsData.summary.openRevenue || 0)).toFixed(2)} TL
+                  </h2>
+                  <p className="text-xs text-zinc-500 mt-1">Ödenen + Açık</p>
+                </div>
+
+                <div className="glass-card p-4 rounded-2xl relative overflow-hidden shadow-lg border-l-4 border-l-rose-500">
+                  <div className="absolute right-3 top-3 text-rose-500 bg-rose-500/10 p-2 rounded-xl">
                     <Percent className="w-5 h-5" />
                   </div>
                   <p className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Yapılan İndirim</p>
                   <h2 className="text-xl font-heading font-black text-white mt-2">
                     {reportsData.summary.totalDiscounts.toFixed(2)} TL
                   </h2>
+                  <p className="text-xs text-zinc-500 mt-1">Siparişlerde uygulandı</p>
                 </div>
-
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
                 <div className="glass-card p-4 rounded-2xl relative overflow-hidden shadow-lg border-l-4 border-l-cyan-500">
                   <div className="absolute right-3 top-3 text-cyan-500 bg-cyan-500/10 p-2 rounded-xl">
                     <UserCheck className="w-5 h-5" />
@@ -1856,10 +1876,28 @@ export default function AdminPanel({ onCloseAction, user }: AdminPanelProps) {
 
               {/* Günlük Toplam Satılan Ürün Özeti */}
               <div className="glass-card p-5 rounded-2xl shadow-md text-xs">
-                <h3 className="font-heading font-bold text-white text-sm mb-4 flex items-center space-x-2">
-                  <Package className="w-4 h-4 text-cyan-400" />
-                  <span>Günlük Satılan Toplam Ürün Raporu</span>
-                </h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
+                  <h3 className="font-heading font-bold text-white text-sm flex items-center space-x-2">
+                    <Package className="w-4 h-4 text-cyan-400" />
+                    <span>Günlük Satılan Toplam Ürün Raporu</span>
+                  </h3>
+                  
+                  {/* Makro Kategori Filtresi */}
+                  <div className="flex bg-zinc-950/60 border border-zinc-800 p-1 rounded-xl overflow-x-auto scrollbar-thin">
+                    {['TÜMÜ', 'YEMEK', 'KAHVALTI', 'TATLI', 'NARGİLE', 'İÇECEK', 'DİĞER'].map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setProductSalesMacroFilter(cat)}
+                        className={`active-press px-3 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition cursor-pointer ${
+                          productSalesMacroFilter === cat ? 'bg-cyan-600 text-white shadow' : 'text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="overflow-x-auto max-h-[300px] scrollbar-thin">
                   <table className="w-full text-left border-collapse">
                     <thead>
@@ -1870,21 +1908,41 @@ export default function AdminPanel({ onCloseAction, user }: AdminPanelProps) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-850">
-                      {!reportsData.productSalesSummary || reportsData.productSalesSummary.length === 0 ? (
-                        <tr>
-                          <td colSpan={3} className="p-6 text-center text-zinc-500 italic">
-                            Satılan ürün kaydı bulunmamaktadır.
-                          </td>
-                        </tr>
-                      ) : (
-                        reportsData.productSalesSummary.map((p, idx) => (
+                      {(() => {
+                        const getMacroCategory = (catName?: string) => {
+                          if (!catName) return 'DİĞER';
+                          const lower = catName.toLowerCase();
+                          if (lower.includes('nargile')) return 'NARGİLE';
+                          if (lower.includes('kahvaltı')) return 'KAHVALTI';
+                          if (lower.includes('tatlı') || lower.includes('pasta') || lower.includes('waffle')) return 'TATLI';
+                          if (lower.includes('içecek') || lower.includes('kahve') || lower.includes('çay') || lower.includes('meşrubat') || lower.includes('kokteyl') || lower.includes('su')) return 'İÇECEK';
+                          if (lower.includes('tavuk') || lower.includes('et') || lower.includes('pizza') || lower.includes('burger') || lower.includes('wrap') || lower.includes('makarna') || lower.includes('salata') || lower.includes('yemek') || lower.includes('atıştırmalık') || lower.includes('tost') || lower.includes('köfte') || lower.includes('quesadilla') || lower.includes('lezzet')) return 'YEMEK';
+                          return 'DİĞER';
+                        };
+
+                        const filteredProducts = reportsData.productSalesSummary?.filter(p => {
+                          if (productSalesMacroFilter === 'TÜMÜ') return true;
+                          return getMacroCategory(p.categoryName) === productSalesMacroFilter;
+                        }) || [];
+
+                        if (filteredProducts.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={3} className="p-6 text-center text-zinc-500 italic">
+                                Satılan ürün kaydı bulunmamaktadır.
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return filteredProducts.map((p, idx) => (
                           <tr key={idx} className="hover:bg-zinc-900/20 transition text-zinc-300">
                             <td className="p-3 font-semibold text-zinc-200">{p.name}</td>
                             <td className="p-3 text-center font-extrabold text-cyan-400">{p.quantity} Adet</td>
                             <td className="p-3 text-right font-extrabold text-emerald-400">{p.total.toFixed(2)} TL</td>
                           </tr>
-                        ))
-                      )}
+                        ));
+                      })()}
                     </tbody>
                   </table>
                 </div>
