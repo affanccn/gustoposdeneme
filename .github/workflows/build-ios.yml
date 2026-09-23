@@ -1,0 +1,61 @@
+name: Build GustoPOS iOS (IPA)
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/build-ios.yml'
+  workflow_dispatch: # GitHub Actions arayüzünden tek tıkla elle başlatabilme
+
+jobs:
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Verify Environment
+        run: |
+          flutter --version
+          pod --version
+
+      - name: Install Flutter Dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Build iOS (Release without Codesign)
+        working-directory: mobile
+        run: |
+          flutter build ios --release --no-codesign
+
+      - name: Package Unsigned IPA
+        working-directory: mobile
+        run: |
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r GustoPOS-iOS-unsigned.ipa Payload
+          ls -lh GustoPOS-iOS-unsigned.ipa
+
+      - name: Upload iOS IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GustoPOS-iOS-IPA
+          path: mobile/build/ios/iphoneos/GustoPOS-iOS-unsigned.ipa
+          retention-days: 14
+
+      - name: Upload Runner.app
+        uses: actions/upload-artifact@v4
+        with:
+          name: GustoPOS-Runner-App
+          path: mobile/build/ios/iphoneos/Runner.app
+          retention-days: 14

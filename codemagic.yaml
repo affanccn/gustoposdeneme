@@ -1,4 +1,52 @@
 workflows:
+  gustopos-flutter-ios:
+    name: Gusto POS Flutter iOS Build
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    working_directory: mobile
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Set up local properties and dependencies
+        script: |
+          flutter packages pub get
+      - name: Flutter build iOS (Release)
+        script: |
+          # Windows kullanıcıları için Mac derleyicisinde kod imzasız Release iOS derlemesi
+          flutter build ios --release --no-codesign
+      - name: Package iOS App & IPA Archive
+        script: |
+          # Runner.app dosyasını Payload klasörüne alıp test edilebilir .ipa çıktısı oluşturur
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r gusto_pos_mobile_unsigned.ipa Payload
+          cd ../../..
+    artifacts:
+      - mobile/build/ios/iphoneos/gusto_pos_mobile_unsigned.ipa
+      - mobile/build/ios/iphoneos/Runner.app
+      - mobile/build/ios/archive/*.xcarchive
+
+  gustopos-flutter-android:
+    name: Gusto POS Flutter Android Build
+    max_build_duration: 30
+    instance_type: linux_x2
+    working_directory: mobile
+    environment:
+      flutter: stable
+      java: 17
+    scripts:
+      - name: Install dependencies
+        script: |
+          flutter packages pub get
+      - name: Build Android APK
+        script: |
+          flutter build apk --release
+    artifacts:
+      - mobile/build/app/outputs/flutter-apk/*.apk
+
   gustopos-web:
     name: Gusto POS Web Build
     max_build_duration: 30
