@@ -1,0 +1,10 @@
+workflows:
+  gustopos-web:
+    name: Gusto POS Web Build
+    max_build_duration: 30
+    instance_type: linux_x2
+    scripts:
+      - name: Install dependencies
+        script: npm ci
+      - name: Build Next.js application
+        script: npm run build
