@@ -17,13 +17,31 @@ class TransferTableDialog extends StatefulWidget {
 class _TransferTableDialogState extends State<TransferTableDialog> {
   String? _selectedTargetTableId;
   bool _isProcessing = false;
+  bool _isPartialTransfer = false;
+  final Map<String, double> _transferQuantities = {};
 
   void _onConfirm() async {
     if (_selectedTargetTableId == null) return;
     setState(() => _isProcessing = true);
 
     final pos = context.read<PosProvider>();
-    final success = await pos.transferTable(widget.sourceTable.id, _selectedTargetTableId!);
+    bool success = false;
+
+    if (_isPartialTransfer && _transferQuantities.isNotEmpty) {
+      final itemsToMove = _transferQuantities.entries.map((e) {
+        return {
+          'orderItemId': e.key,
+          'quantityToMove': e.value,
+        };
+      }).toList();
+      success = await pos.partialTransferTable(
+        widget.sourceTable.id,
+        _selectedTargetTableId!,
+        itemsToMove,
+      );
+    } else {
+      success = await pos.transferTable(widget.sourceTable.id, _selectedTargetTableId!);
+    }
 
     if (mounted) {
       setState(() => _isProcessing = false);
@@ -31,7 +49,7 @@ class _TransferTableDialogState extends State<TransferTableDialog> {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Masa başarıyla aktarıldı/birleştirildi!'),
+            content: Text('Masa / ürünler başarıyla aktarıldı!'),
             backgroundColor: AppColors.success,
           ),
         );
@@ -49,8 +67,8 @@ class _TransferTableDialogState extends State<TransferTableDialog> {
   @override
   Widget build(BuildContext context) {
     final pos = context.watch<PosProvider>();
-    // Hedef masalar (kaynak masa hariç tüm masalar)
     final candidateTables = pos.tables.where((t) => t.id != widget.sourceTable.id).toList();
+    final activeItems = pos.activeOrder?.items.where((i) => i.isActive).toList() ?? [];
 
     return AlertDialog(
       backgroundColor: AppColors.surface,
@@ -73,9 +91,40 @@ class _TransferTableDialogState extends State<TransferTableDialog> {
       ),
       content: SizedBox(
         width: double.maxFinite,
-        child: candidateTables.isEmpty
-            ? const Text('Aktarılabilecek başka masa bulunamadı.')
-            : DropdownButtonFormField<String>(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Taşıma Tipi Seçimi
+              Row(
+                children: [
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('Tüm Masayı Taşı'),
+                      selected: !_isPartialTransfer,
+                      onSelected: (_) => setState(() {
+                        _isPartialTransfer = false;
+                        _transferQuantities.clear();
+                      }),
+                      selectedColor: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('Kısmi Ürün Aktar'),
+                      selected: _isPartialTransfer,
+                      onSelected: (_) => setState(() => _isPartialTransfer = true),
+                      selectedColor: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // Hedef Masa Seçici
+              DropdownButtonFormField<String>(
                 initialValue: _selectedTargetTableId,
                 dropdownColor: AppColors.surface,
                 decoration: const InputDecoration(
@@ -91,6 +140,62 @@ class _TransferTableDialogState extends State<TransferTableDialog> {
                 }).toList(),
                 onChanged: (val) => setState(() => _selectedTargetTableId = val),
               ),
+              const SizedBox(height: 14),
+
+              // Kısmi Ürün Aktarma Kalem Listesi
+              if (_isPartialTransfer) ...[
+                Text(
+                  'Aktarılacak Ürünleri Seçin:',
+                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 180),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceLight.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.cardBorder),
+                  ),
+                  child: activeItems.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Text('Aktarılacak açık sipariş kalemi yok.'),
+                        )
+                      : ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: activeItems.length,
+                          separatorBuilder: (_, _) => const Divider(color: AppColors.cardBorder, height: 1),
+                          itemBuilder: (context, idx) {
+                            final item = activeItems[idx];
+                            final isChecked = (_transferQuantities[item.id] ?? 0) > 0;
+
+                            return CheckboxListTile(
+                              dense: true,
+                              value: isChecked,
+                              activeColor: AppColors.primary,
+                              checkColor: Colors.black,
+                              onChanged: (val) {
+                                setState(() {
+                                  if (val == true) {
+                                    _transferQuantities[item.id] = item.quantity;
+                                  } else {
+                                    _transferQuantities.remove(item.id);
+                                  }
+                                });
+                              },
+                              title: Text(item.productName, style: GoogleFonts.inter(fontSize: 13)),
+                              subtitle: Text(
+                                '${item.quantity.toInt()} adet • ₺${item.totalPrice.toStringAsFixed(2)}',
+                                style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
       actions: [
         TextButton(

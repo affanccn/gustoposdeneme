@@ -5,6 +5,7 @@ import '../../models/table.dart';
 import '../../models/product.dart';
 import '../../models/order.dart';
 import '../../models/report.dart';
+import '../../models/customer.dart';
 import 'storage_service.dart';
 
 class ApiService {
@@ -92,6 +93,12 @@ class ApiService {
       activeItemCount: 2,
       activeOrderCreatedAt: DateTime.now().subtract(const Duration(minutes: 22)),
     ),
+  ];
+
+  final List<Customer> _mockCustomers = [
+    Customer(id: 'c-1', name: 'Ahmet Çetin (Şirket)', phone: '0532 111 2233', balance: 1450.0),
+    Customer(id: 'c-2', name: 'Avukat Mehmet Bey', phone: '0544 555 6677', balance: 820.0),
+    Customer(id: 'c-3', name: 'Gusto Personel Hesabı', phone: '0505 999 8877', balance: 0.0),
   ];
 
   final List<Category> _mockCategories = [
@@ -557,6 +564,226 @@ class ApiService {
       activeItemCount: 0,
     );
     return true;
+  }
+
+  // 9.1 Kısmi Ürün Aktarma
+  Future<bool> partialTransferTable(
+    String sourceTableId,
+    String targetTableId,
+    List<Map<String, dynamic>> itemsToMove,
+  ) async {
+    final sIdx = _mockTables.indexWhere((t) => t.id == sourceTableId);
+    final tIdx = _mockTables.indexWhere((t) => t.id == targetTableId);
+    if (sIdx == -1 || tIdx == -1) return false;
+
+    final source = _mockTables[sIdx];
+    final target = _mockTables[tIdx];
+
+    if (source.activeOrderId == null || !_mockOrders.containsKey(source.activeOrderId)) {
+      return false;
+    }
+
+    final sOrder = _mockOrders[source.activeOrderId]!;
+    double movedAmount = 0.0;
+    List<OrderItem> remainingItems = [];
+    List<OrderItem> transferredItems = [];
+
+    for (var item in sOrder.items) {
+      final moveMatch = itemsToMove.firstWhere(
+        (m) => m['orderItemId'] == item.id,
+        orElse: () => {},
+      );
+
+      if (moveMatch.isNotEmpty) {
+        final double qtyToMove = (moveMatch['quantityToMove'] as num).toDouble();
+        if (qtyToMove >= item.quantity) {
+          transferredItems.add(item);
+          movedAmount += item.totalPrice;
+        } else {
+          final movedPart = OrderItem(
+            id: 'item-${DateTime.now().millisecondsSinceEpoch}',
+            productId: item.productId,
+            productName: item.productName,
+            unitPrice: item.unitPrice,
+            quantity: qtyToMove,
+            note: item.note,
+            selectedModifiers: item.selectedModifiers,
+          );
+          transferredItems.add(movedPart);
+          movedAmount += movedPart.totalPrice;
+
+          item.quantity -= qtyToMove;
+          remainingItems.add(item);
+        }
+      } else {
+        remainingItems.add(item);
+      }
+    }
+
+    // Kaynak masayı güncelle
+    if (remainingItems.isEmpty) {
+      _mockTables[sIdx] = source.copyWith(
+        status: 'EMPTY',
+        activeOrderId: null,
+        activeOrderTotal: 0.0,
+        activeOrderPaid: 0.0,
+        activeItemCount: 0,
+      );
+      _mockOrders.remove(source.activeOrderId);
+    } else {
+      final newTotal = (source.activeOrderTotal - movedAmount).clamp(0.0, double.infinity);
+      _mockTables[sIdx] = source.copyWith(
+        activeOrderTotal: newTotal,
+        activeItemCount: remainingItems.length,
+      );
+      _mockOrders[source.activeOrderId!] = PosOrder(
+        id: sOrder.id,
+        tableId: source.id,
+        totalAmount: newTotal,
+        discountAmount: sOrder.discountAmount,
+        paidAmount: sOrder.paidAmount,
+        status: sOrder.status,
+        note: sOrder.note,
+        items: remainingItems,
+        payments: sOrder.payments,
+        createdAt: sOrder.createdAt,
+      );
+    }
+
+    // Hedef masayı güncelle
+    final targetOrderId = target.activeOrderId ?? 'ord-${DateTime.now().millisecondsSinceEpoch}';
+    final existingTargetOrder = target.activeOrderId != null ? _mockOrders[target.activeOrderId] : null;
+
+    final List<OrderItem> newTargetItems = existingTargetOrder != null
+        ? [...existingTargetOrder.items, ...transferredItems]
+        : transferredItems;
+
+    _mockOrders[targetOrderId] = PosOrder(
+      id: targetOrderId,
+      tableId: target.id,
+      totalAmount: target.activeOrderTotal + movedAmount,
+      paidAmount: target.activeOrderPaid,
+      status: 'ACTIVE',
+      items: newTargetItems,
+      createdAt: target.activeOrderCreatedAt ?? DateTime.now(),
+    );
+
+    _mockTables[tIdx] = target.copyWith(
+      status: 'OCCUPIED',
+      activeOrderId: targetOrderId,
+      activeOrderTotal: target.activeOrderTotal + movedAmount,
+      activeItemCount: newTargetItems.length,
+      activeOrderCreatedAt: target.activeOrderCreatedAt ?? DateTime.now(),
+    );
+
+    return true;
+  }
+
+  // 9.2 İndirim Uygula (% veya Sabit Tutar)
+  Future<bool> applyDiscount({
+    required String tableId,
+    required String discountType, // 'percentage' | 'amount'
+    required double value,
+  }) async {
+    final idx = _mockTables.indexWhere((t) => t.id == tableId);
+    if (idx == -1) return false;
+    final table = _mockTables[idx];
+    if (table.activeOrderId == null || !_mockOrders.containsKey(table.activeOrderId)) {
+      return false;
+    }
+
+    final order = _mockOrders[table.activeOrderId]!;
+    double discountCalc = 0.0;
+    if (discountType == 'percentage') {
+      discountCalc = (order.totalAmount * (value / 100)).clamp(0.0, order.totalAmount);
+    } else {
+      discountCalc = value.clamp(0.0, order.totalAmount);
+    }
+
+    final newTotal = (order.totalAmount - discountCalc).clamp(0.0, double.infinity);
+
+    _mockOrders[table.activeOrderId!] = PosOrder(
+      id: order.id,
+      tableId: order.tableId,
+      totalAmount: newTotal,
+      discountAmount: order.discountAmount + discountCalc,
+      paidAmount: order.paidAmount,
+      status: order.status,
+      note: order.note,
+      items: order.items,
+      payments: order.payments,
+      createdAt: order.createdAt,
+    );
+
+    _mockTables[idx] = table.copyWith(activeOrderTotal: newTotal);
+    return true;
+  }
+
+  // 9.3 Ürün Kalem İşlemi (İkram veya İptal)
+  Future<bool> applyItemAction({
+    required String tableId,
+    required String orderItemId,
+    required String action, // 'complimentary' | 'cancel'
+    String? cancelReason,
+  }) async {
+    final idx = _mockTables.indexWhere((t) => t.id == tableId);
+    if (idx == -1) return false;
+    final table = _mockTables[idx];
+    if (table.activeOrderId == null || !_mockOrders.containsKey(table.activeOrderId)) {
+      return false;
+    }
+
+    final order = _mockOrders[table.activeOrderId]!;
+    final itemIdx = order.items.indexWhere((i) => i.id == orderItemId);
+    if (itemIdx == -1) return false;
+
+    final item = order.items[itemIdx];
+
+    if (action == 'complimentary') {
+      item.status = 'COMPLIMENTARY';
+    } else if (action == 'cancel') {
+      item.status = 'CANCELLED';
+      item.cancelReason = cancelReason ?? 'Müşteri vazgeçti';
+    }
+
+    // Toplamı yeniden hesapla
+    double newTotal = 0.0;
+    for (var it in order.items) {
+      if (it.isActive) {
+        newTotal += it.totalPrice;
+      }
+    }
+
+    _mockOrders[table.activeOrderId!] = PosOrder(
+      id: order.id,
+      tableId: order.tableId,
+      totalAmount: newTotal,
+      discountAmount: order.discountAmount,
+      paidAmount: order.paidAmount,
+      status: order.status,
+      note: order.note,
+      items: order.items,
+      payments: order.payments,
+      createdAt: order.createdAt,
+    );
+
+    _mockTables[idx] = table.copyWith(activeOrderTotal: newTotal);
+    return true;
+  }
+
+  // 9.4 Cari Müşterileri Getir
+  Future<List<Customer>> getCustomers() async {
+    if (_useDemoMode) {
+      return List.from(_mockCustomers);
+    }
+    try {
+      final res = await http.get(Uri.parse('$_baseUrl/api/admin/customers')).timeout(const Duration(seconds: 4));
+      if (res.statusCode == 200) {
+        final list = jsonDecode(res.body) as List;
+        return list.map((e) => Customer.fromJson(e)).toList();
+      }
+    } catch (_) {}
+    return List.from(_mockCustomers);
   }
 
   // 10. Yönetici Analiz Raporları

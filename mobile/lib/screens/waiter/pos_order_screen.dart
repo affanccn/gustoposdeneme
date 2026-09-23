@@ -8,6 +8,7 @@ import '../../models/table.dart';
 import '../../models/product.dart';
 import '../../models/order.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/numpad_sheet.dart';
 import 'checkout_dialog.dart';
 import 'transfer_table_dialog.dart';
 
@@ -22,24 +23,36 @@ class PosOrderScreen extends StatefulWidget {
 
 class _PosOrderScreenState extends State<PosOrderScreen> {
   final TextEditingController _noteController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+
+  // Mutfak Hızlı Not Etiketleri (GustoPOS web ile birebir)
+  final List<String> _quickNotes = [
+    'Az Şekerli',
+    'Buzsuz',
+    'Sıcak Olsun',
+    'Acılı',
+    'Double',
+    'Porsiyon',
+    'Paket',
+    'Soslu',
+    'Tuzsuz'
+  ];
 
   @override
   void dispose() {
     _noteController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
-  // Modifier Seçim Dialogu
+  // Modifier Seçim ve Not Dialogu
   void _showModifierDialog(Product product) {
-    if (product.modifiers.isEmpty) {
-      context.read<PosProvider>().addToCart(product);
-      return;
-    }
-
     final selectedMods = <Modifier>[];
+    final itemNoteController = TextEditingController();
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -48,90 +61,293 @@ class _PosOrderScreenState extends State<PosOrderScreen> {
         return StatefulBuilder(
           builder: (context, setSheetState) {
             return Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        product.name,
-                        style: GoogleFonts.inter(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            product.name,
+                            style: GoogleFonts.inter(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
                         ),
-                      ),
-                      Text(
-                        '₺${product.price.toStringAsFixed(2)}',
-                        style: GoogleFonts.inter(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.primary,
+                        Text(
+                          '₺${product.price.toStringAsFixed(2)}',
+                          style: GoogleFonts.inter(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                          ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Opsiyonlar
+                    if (product.modifiers.isNotEmpty) ...[
+                      Text(
+                        'İsteğe Bağlı Seçenekler (Modifier)',
+                        style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted),
                       ),
+                      const SizedBox(height: 8),
+                      ...product.modifiers.map((mod) {
+                        final isChecked = selectedMods.contains(mod);
+                        return CheckboxListTile(
+                          value: isChecked,
+                          onChanged: (val) {
+                            setSheetState(() {
+                              if (val == true) {
+                                selectedMods.add(mod);
+                              } else {
+                                selectedMods.remove(mod);
+                              }
+                            });
+                          },
+                          title: Text(mod.name, style: GoogleFonts.inter(color: AppColors.textPrimary)),
+                          subtitle: mod.price > 0
+                              ? Text('+₺${mod.price.toStringAsFixed(2)}',
+                                  style: GoogleFonts.inter(color: AppColors.primary))
+                              : const Text('Ücretsiz', style: TextStyle(color: AppColors.textMuted)),
+                          activeColor: AppColors.primary,
+                          checkColor: Colors.black,
+                          contentPadding: EdgeInsets.zero,
+                        );
+                      }),
+                      const Divider(color: AppColors.cardBorder, height: 20),
                     ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'İsteğe Bağlı Seçenekler',
-                    style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted),
-                  ),
-                  const Divider(color: AppColors.cardBorder, height: 24),
-                  ...product.modifiers.map((mod) {
-                    final isChecked = selectedMods.contains(mod);
-                    return CheckboxListTile(
-                      value: isChecked,
-                      onChanged: (val) {
-                        setSheetState(() {
-                          if (val == true) {
-                            selectedMods.add(mod);
-                          } else {
-                            selectedMods.remove(mod);
-                          }
-                        });
-                      },
-                      title: Text(
-                        mod.name,
-                        style: GoogleFonts.inter(color: AppColors.textPrimary),
-                      ),
-                      subtitle: mod.price > 0
-                          ? Text('+₺${mod.price.toStringAsFixed(2)}',
-                              style: GoogleFonts.inter(color: AppColors.primary))
-                          : const Text('Ücretsiz', style: TextStyle(color: AppColors.textMuted)),
-                      activeColor: AppColors.primary,
-                      checkColor: Colors.black,
-                      contentPadding: EdgeInsets.zero,
-                    );
-                  }),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        context.read<PosProvider>().addToCart(product, modifiers: selectedMods);
-                        Navigator.pop(ctx);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.black,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: Text(
-                        'Sepete Ekle',
-                        style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold),
+
+                    // Hızlı Mutfak Notları
+                    Text(
+                      'Hızlı Mutfak Notları',
+                      style: GoogleFonts.inter(fontSize: 13, color: AppColors.textMuted),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: _quickNotes.map((qn) {
+                        return ActionChip(
+                          label: Text(qn),
+                          backgroundColor: AppColors.surfaceLight,
+                          labelStyle: GoogleFonts.inter(fontSize: 11, color: AppColors.textSecondary),
+                          onPressed: () {
+                            setSheetState(() {
+                              if (itemNoteController.text.isEmpty) {
+                                itemNoteController.text = qn;
+                              } else {
+                                itemNoteController.text += ', $qn';
+                              }
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Özel Not Girişi
+                    TextField(
+                      controller: itemNoteController,
+                      decoration: const InputDecoration(
+                        hintText: 'Özel not veya tarif...',
+                        prefixIcon: Icon(Icons.edit_note_rounded, color: AppColors.textMuted),
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          context.read<PosProvider>().addToCart(
+                                product,
+                                modifiers: selectedMods,
+                                note: itemNoteController.text.trim().isEmpty
+                                    ? null
+                                    : itemNoteController.text.trim(),
+                              );
+                          Navigator.pop(ctx);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.black,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: Text(
+                          'Sepete Ekle',
+                          style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           },
         );
       },
+    );
+  }
+
+  // Kalem İşlemleri (İkram / İptal)
+  void _showItemActionModal(OrderItem item) {
+    final pos = context.read<PosProvider>();
+    final auth = context.read<AuthProvider>();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              item.productName,
+              style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            Text(
+              'Tutar: ₺${item.totalPrice.toStringAsFixed(2)} • Durum: ${item.status}',
+              style: GoogleFonts.inter(fontSize: 12, color: AppColors.textMuted),
+            ),
+            const Divider(color: AppColors.cardBorder, height: 24),
+
+            // İkram Et Butonu
+            ListTile(
+              leading: const Icon(Icons.card_giftcard_rounded, color: AppColors.purple),
+              title: const Text('İkram Et (Complimentary)'),
+              subtitle: const Text('Ürün tutarını ₺0.00 yapar (Admin PIN gerekir)'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final pin = await NumpadSheet.show(
+                  context,
+                  title: 'Yönetici PIN Onayı',
+                  subtitle: 'İkram işlemi için PIN girin',
+                  isPin: true,
+                );
+                if (pin != null && mounted) {
+                  final isAuth = await auth.verifyAdminPin(pin);
+                  if (isAuth) {
+                    await pos.applyItemAction(item.id, 'complimentary');
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Ürün ikram edildi!'),
+                          backgroundColor: AppColors.purple,
+                        ),
+                      );
+                    }
+                  } else if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Hatalı PIN!'), backgroundColor: AppColors.danger),
+                    );
+                  }
+                }
+              },
+            ),
+
+            // İptal Et Butonu
+            ListTile(
+              leading: const Icon(Icons.cancel_outlined, color: AppColors.danger),
+              title: const Text('Ürünü İptal Et'),
+              subtitle: const Text('Mazeret seçimi ve Admin PIN ile adisyondan düşer'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                _showCancelDialog(item);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCancelDialog(OrderItem item) {
+    final pos = context.read<PosProvider>();
+    final auth = context.read<AuthProvider>();
+    String reason = 'Müşteri vazgeçti';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: Text('${item.productName} İptal'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('İptal Mazereti:', style: TextStyle(color: AppColors.textMuted)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: reason,
+                dropdownColor: AppColors.surface,
+                items: [
+                  'Müşteri vazgeçti',
+                  'Mutfak hatası',
+                  'Personel hatası',
+                  'Yanlış sipariş girildi',
+                  'Müşteri beğenmedi',
+                  'Diğer'
+                ].map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+                onChanged: (val) {
+                  if (val != null) setDlgState(() => reason = val);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+            ElevatedButton(
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.pop(ctx);
+                final pin = await NumpadSheet.show(
+                  context,
+                  title: 'Yönetici PIN Onayı',
+                  subtitle: 'Ürün iptali için PIN girin',
+                  isPin: true,
+                );
+                if (pin != null && mounted) {
+                  final isAuth = await auth.verifyAdminPin(pin);
+                  if (isAuth) {
+                    await pos.applyItemAction(item.id, 'cancel', cancelReason: reason);
+                    if (mounted) {
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('Ürün iptal edildi.'), backgroundColor: AppColors.danger),
+                      );
+                    }
+                  } else if (mounted) {
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Hatalı PIN!'), backgroundColor: AppColors.danger),
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+              child: const Text('İptali Onayla'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -141,7 +357,7 @@ class _PosOrderScreenState extends State<PosOrderScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Sipariş Notu', style: GoogleFonts.inter(color: AppColors.textPrimary)),
+        title: Text('Genel Sipariş Notu', style: GoogleFonts.inter(color: AppColors.textPrimary)),
         content: TextField(
           controller: _noteController,
           maxLines: 3,
@@ -253,7 +469,6 @@ class _PosOrderScreenState extends State<PosOrderScreen> {
           final isTablet = constraints.maxWidth > 700;
 
           if (isTablet) {
-            // Tablet Görünümü: Yan Yana (Sol: Menü, Sağ: Adisyon Sepeti)
             return Row(
               children: [
                 Expanded(
@@ -268,7 +483,6 @@ class _PosOrderScreenState extends State<PosOrderScreen> {
               ],
             );
           } else {
-            // Telefon Görünümü: Dikey Sekmeli veya Alt Sepet Panelli
             return Column(
               children: [
                 Expanded(child: _buildMenuSection(pos)),
@@ -281,21 +495,61 @@ class _PosOrderScreenState extends State<PosOrderScreen> {
     );
   }
 
-  // Menü ve Kategori Bölümü
+  // Menü, Arama ve Kategori Bölümü
   Widget _buildMenuSection(PosProvider pos) {
     return Column(
       children: [
-        // Kategori Çubuğu
+        // 1. Canlı Ürün Arama Çubuğu (GustoPOS Search)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+          child: TextField(
+            controller: _searchController,
+            onChanged: (val) => pos.setSearchQuery(val),
+            decoration: InputDecoration(
+              hintText: 'Menüde ara... (Örn: Latte, Burger, Sufle)',
+              prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear_rounded, size: 18),
+                      onPressed: () {
+                        _searchController.clear();
+                        pos.setSearchQuery('');
+                      },
+                    )
+                  : null,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            ),
+          ),
+        ),
+
+        // 2. Kategori Çubuğu (Favoriler ⭐ Butonu Dahil)
         Container(
-          height: 48,
-          margin: const EdgeInsets.symmetric(vertical: 8),
+          height: 44,
+          margin: const EdgeInsets.only(bottom: 6),
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             scrollDirection: Axis.horizontal,
-            itemCount: pos.categories.length + 1,
+            itemCount: pos.categories.length + 2,
             separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
+              // 0: Favoriler
               if (index == 0) {
+                final isFav = pos.selectedCategoryId == 'FAVORITES';
+                return ChoiceChip(
+                  avatar: const Icon(Icons.star_rounded, size: 16, color: Colors.amber),
+                  label: const Text('Favoriler'),
+                  selected: isFav,
+                  onSelected: (_) => pos.setCategory('FAVORITES'),
+                  selectedColor: AppColors.primary,
+                  backgroundColor: AppColors.surface,
+                  labelStyle: GoogleFonts.inter(
+                    fontWeight: isFav ? FontWeight.bold : FontWeight.normal,
+                    color: isFav ? Colors.black : AppColors.textSecondary,
+                  ),
+                );
+              }
+              // 1: Tüm Menü
+              if (index == 1) {
                 final isSelected = pos.selectedCategoryId == null || pos.selectedCategoryId == 'ALL';
                 return ChoiceChip(
                   label: const Text('Tüm Menü'),
@@ -309,7 +563,7 @@ class _PosOrderScreenState extends State<PosOrderScreen> {
                   ),
                 );
               }
-              final cat = pos.categories[index - 1];
+              final cat = pos.categories[index - 2];
               final isSelected = pos.selectedCategoryId == cat.id;
               return ChoiceChip(
                 label: Text(cat.name),
@@ -326,22 +580,29 @@ class _PosOrderScreenState extends State<PosOrderScreen> {
           ),
         ),
 
-        // Ürünler Grid
+        // 3. Ürünler Grid Görünümü
         Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 1.15,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-            ),
-            itemCount: pos.filteredProducts.length,
-            itemBuilder: (context, index) {
-              final product = pos.filteredProducts[index];
-              return _buildProductCard(product);
-            },
-          ),
+          child: pos.filteredProducts.isEmpty
+              ? Center(
+                  child: Text(
+                    'Aradığınız kriterde ürün bulunamadı.',
+                    style: GoogleFonts.inter(color: AppColors.textMuted),
+                  ),
+                )
+              : GridView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    childAspectRatio: 1.15,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: pos.filteredProducts.length,
+                  itemBuilder: (context, index) {
+                    final product = pos.filteredProducts[index];
+                    return _buildProductCard(product);
+                  },
+                ),
         ),
       ],
     );
@@ -421,7 +682,7 @@ class _PosOrderScreenState extends State<PosOrderScreen> {
                   style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 IconButton(
-                  tooltip: 'Sipariş Notu',
+                  tooltip: 'Genel Not',
                   icon: const Icon(Icons.note_add_outlined, color: AppColors.primary),
                   onPressed: _showOrderNoteDialog,
                 ),
@@ -436,14 +697,19 @@ class _PosOrderScreenState extends State<PosOrderScreen> {
               children: [
                 // Mevcut Onaylı Siparişler (Mutfakta Olanlar)
                 if (pos.activeOrder != null && pos.activeOrder!.items.isNotEmpty) ...[
-                  Text(
-                    'ONAYLANMIŞ SİPARİŞLER',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textMuted,
-                      letterSpacing: 0.8,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'MUTFAKTAKİ SİPARİŞLER (DOKUNUP İPTAL/İKRAM YAPIN)',
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textMuted,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   ...pos.activeOrder!.items.map((item) => _buildExistingOrderItem(item)),
@@ -488,38 +754,90 @@ class _PosOrderScreenState extends State<PosOrderScreen> {
     );
   }
 
-  // Onaylanmış Ürün Satırı
+  // Onaylanmış Ürün Satırı (Dokunulduğunda İkram/İptal menüsü açılır)
   Widget _buildExistingOrderItem(OrderItem item) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${item.quantity.toInt()}x ${item.productName}',
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+    final bool isComplimentary = item.isComplimentary;
+    final bool isCancelled = item.isCancelled;
+
+    return InkWell(
+      onTap: isCancelled ? null : () => _showItemActionModal(item),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        '${item.quantity.toInt()}x ${item.productName}',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          decoration: isCancelled ? TextDecoration.lineThrough : null,
+                          color: isCancelled
+                              ? AppColors.danger
+                              : isComplimentary
+                                  ? AppColors.purple
+                                  : AppColors.textPrimary,
+                        ),
+                      ),
+                      if (isComplimentary) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: AppColors.purple.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text('İKRAM',
+                              style: TextStyle(color: AppColors.purple, fontSize: 9, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                      if (isCancelled) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: AppColors.danger.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text('İPTAL',
+                              style: TextStyle(color: AppColors.danger, fontSize: 9, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ],
                   ),
-                ),
-                if (item.selectedModifiers.isNotEmpty)
-                  Text(
-                    item.selectedModifiers.map((m) => m['name']).join(', '),
-                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
-                  ),
-              ],
+                  if (item.selectedModifiers.isNotEmpty)
+                    Text(
+                      item.selectedModifiers.map((m) => m['name']).join(', '),
+                      style: GoogleFonts.inter(fontSize: 11, color: AppColors.textMuted),
+                    ),
+                  if (item.note != null && item.note!.isNotEmpty)
+                    Text(
+                      'Not: ${item.note}',
+                      style: GoogleFonts.inter(fontSize: 11, color: AppColors.primaryLight),
+                    ),
+                ],
+              ),
             ),
-          ),
-          Text(
-            '₺${item.totalPrice.toStringAsFixed(2)}',
-            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold),
-          ),
-        ],
+            Text(
+              isComplimentary
+                  ? '₺0.00'
+                  : '₺${item.totalPrice.toStringAsFixed(2)}',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                decoration: isCancelled ? TextDecoration.lineThrough : null,
+                color: isCancelled ? AppColors.textMuted : AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -546,6 +864,11 @@ class _PosOrderScreenState extends State<PosOrderScreen> {
                 if (item.selectedModifiers.isNotEmpty)
                   Text(
                     item.selectedModifiers.map((m) => m['name']).join(', '),
+                    style: GoogleFonts.inter(fontSize: 11, color: AppColors.primaryLight),
+                  ),
+                if (item.note != null && item.note!.isNotEmpty)
+                  Text(
+                    'Not: ${item.note}',
                     style: GoogleFonts.inter(fontSize: 11, color: AppColors.primaryLight),
                   ),
                 Text(

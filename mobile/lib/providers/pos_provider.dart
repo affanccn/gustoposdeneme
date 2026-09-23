@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/table.dart';
 import '../models/product.dart';
 import '../models/order.dart';
+import '../models/customer.dart';
 import '../core/services/api_service.dart';
 
 class PosProvider extends ChangeNotifier {
@@ -18,19 +19,23 @@ class PosProvider extends ChangeNotifier {
 
   // Yeni sipariş sepeti (masaya henüz gönderilmemiş kalemler)
   final List<OrderItem> _cartItems = [];
+  List<Customer> _customers = [];
+  String _searchQuery = '';
 
   List<PosTable> get tables => _tables;
   List<Category> get categories => _categories;
   List<Product> get products => _products;
+  List<Customer> get customers => _customers;
   PosTable? get selectedTable => _selectedTable;
   PosOrder? get activeOrder => _activeOrder;
   List<OrderItem> get cartItems => _cartItems;
   String get selectedArea => _selectedArea;
   String? get selectedCategoryId => _selectedCategoryId;
+  String get searchQuery => _searchQuery;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  // Kat planı filtreleme
+  // Kat planı filtreleme (Exact areas: Tümü, Açık, Bahçe, Üst Kat, Loca, Teras, Diğer)
   List<PosTable> get filteredTables {
     if (_selectedArea == 'Tümü') return _tables;
     return _tables.where((t) => t.area.toLowerCase() == _selectedArea.toLowerCase()).toList();
@@ -38,19 +43,27 @@ class PosProvider extends ChangeNotifier {
 
   // Alanlar listesi (Tabs)
   List<String> get availableAreas {
-    final areas = <String>{'Tümü'};
+    final defaultAreas = ['Tümü', 'Salon', 'Teras', 'Bahçe', 'Açık', 'Üst Kat', 'Loca', 'Bar'];
+    final areas = <String>{...defaultAreas};
     for (var t in _tables) {
       if (t.area.isNotEmpty) areas.add(t.area);
     }
     return areas.toList();
   }
 
-  // Menü filtreleme
+  // Menü filtreleme (Arama ve Favoriler desteği)
   List<Product> get filteredProducts {
-    if (_selectedCategoryId == null || _selectedCategoryId == 'ALL') {
-      return _products;
+    var prods = _products;
+    if (_searchQuery.trim().isNotEmpty) {
+      return prods.where((p) => p.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
     }
-    return _products.where((p) => p.categoryId == _selectedCategoryId).toList();
+    if (_selectedCategoryId == 'FAVORITES') {
+      return prods.where((p) => p.isFavorite).toList();
+    }
+    if (_selectedCategoryId == null || _selectedCategoryId == 'ALL') {
+      return prods;
+    }
+    return prods.where((p) => p.categoryId == _selectedCategoryId).toList();
   }
 
   // İstatistikler
@@ -278,5 +291,70 @@ class PosProvider extends ChangeNotifier {
       notifyListeners();
     }
     return success;
+  }
+
+  void setSearchQuery(String query) {
+    _searchQuery = query;
+    notifyListeners();
+  }
+
+  Future<void> loadCustomers() async {
+    _customers = await ApiService.instance.getCustomers();
+    notifyListeners();
+  }
+
+  // İndirim Uygula (% veya Sabit Tutar)
+  Future<bool> applyDiscount(String discountType, double value) async {
+    if (_selectedTable == null) return false;
+    final ok = await ApiService.instance.applyDiscount(
+      tableId: _selectedTable!.id,
+      discountType: discountType,
+      value: value,
+    );
+    if (ok) {
+      _tables = await ApiService.instance.getTables();
+      final updated = _tables.firstWhere((t) => t.id == _selectedTable!.id, orElse: () => _selectedTable!);
+      _selectedTable = updated;
+      _activeOrder = await ApiService.instance.getTableOrder(_selectedTable!.id);
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  // Kalem İşlemi (İkram veya İptal)
+  Future<bool> applyItemAction(String orderItemId, String action, {String? cancelReason}) async {
+    if (_selectedTable == null) return false;
+    final ok = await ApiService.instance.applyItemAction(
+      tableId: _selectedTable!.id,
+      orderItemId: orderItemId,
+      action: action,
+      cancelReason: cancelReason,
+    );
+    if (ok) {
+      _tables = await ApiService.instance.getTables();
+      final updated = _tables.firstWhere((t) => t.id == _selectedTable!.id, orElse: () => _selectedTable!);
+      _selectedTable = updated;
+      _activeOrder = await ApiService.instance.getTableOrder(_selectedTable!.id);
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  // Kısmi Ürün Aktarma
+  Future<bool> partialTransferTable(
+    String sourceTableId,
+    String targetTableId,
+    List<Map<String, dynamic>> itemsToMove,
+  ) async {
+    final ok = await ApiService.instance.partialTransferTable(sourceTableId, targetTableId, itemsToMove);
+    if (ok) {
+      _tables = await ApiService.instance.getTables();
+      if (_selectedTable != null) {
+        _selectedTable = _tables.firstWhere((t) => t.id == sourceTableId, orElse: () => _selectedTable!);
+        _activeOrder = await ApiService.instance.getTableOrder(_selectedTable!.id);
+      }
+      notifyListeners();
+    }
+    return ok;
   }
 }
